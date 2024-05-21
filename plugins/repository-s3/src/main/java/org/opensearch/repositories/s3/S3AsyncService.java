@@ -28,6 +28,11 @@ import software.amazon.awssdk.profiles.ProfileFileSystemSetting;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
+import software.amazon.awssdk.services.s3.S3CrtAsyncClientBuilder;
+import software.amazon.awssdk.services.s3.crt.S3CrtConnectionHealthConfiguration;
+import software.amazon.awssdk.services.s3.crt.S3CrtHttpConfiguration;
+import software.amazon.awssdk.services.s3.crt.S3CrtProxyConfiguration;
+import software.amazon.awssdk.services.s3.crt.S3CrtRetryConfiguration;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
@@ -230,7 +235,33 @@ class S3AsyncService implements Closeable {
         );
         final S3AsyncClient client = SocketAccess.doPrivileged(builder::build);
 
-        return AmazonAsyncS3WithCredentials.create(client, priorityClient, urgentClient, credentials);
+        final S3CrtAsyncClientBuilder crtBuilder = S3AsyncClient.crtBuilder().region(Region.US_EAST_1);
+        crtBuilder.credentialsProvider(credentials);
+        S3CrtHttpConfiguration.Builder httpConfiguration =  S3CrtHttpConfiguration.builder();
+        if (clientSettings.proxySettings.getType() != ProxySettings.ProxyType.DIRECT) {
+            S3CrtProxyConfiguration proxyConfiguration = S3CrtProxyConfiguration.builder()
+                .scheme(clientSettings.proxySettings.getType().toProtocol().toString())
+                .host(clientSettings.proxySettings.getHostName())
+                .port(clientSettings.proxySettings.getPort())
+                .username(clientSettings.proxySettings.getUsername())
+                .password(clientSettings.proxySettings.getPassword())
+                .build();
+            httpConfiguration.proxyConfiguration(proxyConfiguration);
+        }
+        crtBuilder.httpConfiguration(httpConfiguration.build());
+        crtBuilder.retryConfiguration(S3CrtRetryConfiguration.builder()
+            .numRetries(clientSettings.maxRetries)
+            .build());
+//            crtBuilder.asyncConfiguration(
+//            ClientAsyncConfiguration.builder()
+//                .advancedOption(
+//                    SdkAdvancedAsyncClientOption.FUTURE_COMPLETION_EXECUTOR,
+//                    urgentExecutorBuilder.getFutureCompletionExecutor()
+//                )
+//                .build()
+//        );
+        final S3AsyncClient crtClient = SocketAccess.doPrivileged(crtBuilder::build);
+        return AmazonAsyncS3WithCredentials.create(client, priorityClient, urgentClient, credentials, crtClient);
     }
 
     static ClientOverrideConfiguration buildOverrideConfiguration(final S3ClientSettings clientSettings) {

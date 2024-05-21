@@ -33,34 +33,14 @@
 package org.opensearch.repositories.s3;
 
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
+import software.amazon.awssdk.core.async.BlockingInputStreamAsyncRequestBody;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.model.CommonPrefix;
-import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
-import software.amazon.awssdk.services.s3.model.CompletedPart;
-import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.model.Delete;
-import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
-import software.amazon.awssdk.services.s3.model.GetObjectAttributesRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectAttributesResponse;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import software.amazon.awssdk.services.s3.model.ObjectAttributes;
-import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Error;
-import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
-import software.amazon.awssdk.services.s3.model.UploadPartRequest;
-import software.amazon.awssdk.services.s3.model.UploadPartResponse;
+import software.amazon.awssdk.services.s3.internal.crt.S3CrtAsyncClient;
+import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 import software.amazon.awssdk.utils.CollectionUtils;
 
@@ -193,15 +173,78 @@ class S3BlobContainer extends AbstractBlobContainer implements AsyncMultiStreamB
         boolean failIfAlreadyExists,
         @Nullable Map<String, String> metadata
     ) throws IOException {
+        logger.info("********writeBlobWithMetadata********");
+
         assert inputStream.markSupported() : "No mark support on inputStream breaks the S3 SDK's ability to retry requests";
         SocketAccess.doPrivilegedIOException(() -> {
             if (blobSize <= getLargeBlobThresholdInBytes()) {
+                logger.info("Executing single upload");
                 executeSingleUpload(blobStore, buildKey(blobName), inputStream, blobSize, metadata);
             } else {
+                logger.info("Executing multiplart upload");
+
                 executeMultipartUpload(blobStore, buildKey(blobName), inputStream, blobSize, metadata);
             }
             return null;
         });
+    }
+
+    public void asyncWriteBlob(String blobName, InputStream inputStream, boolean failIfAlreadyExists,@Nullable Map<String, String> metadata, WritePriority priority, ActionListener<Void> completionListener) throws IOException {
+        assert inputStream.markSupported() : "No mark support on inputStream breaks the S3 SDK's ability to retry requests";
+
+        try (AmazonAsyncS3Reference amazonS3Reference = SocketAccess.doPrivileged(blobStore::asyncClientReference)) {
+
+            S3AsyncClient s3AsyncClient;
+            if (priority == WritePriority.URGENT) {
+                s3AsyncClient = amazonS3Reference.get().urgentClient();
+            } else if (priority == WritePriority.HIGH) {
+                s3AsyncClient = amazonS3Reference.get().priorityClient();
+            } else {
+                s3AsyncClient = amazonS3Reference.get().client();
+            }
+            //getAsyncTransferManager does not support putObject.
+            CompletableFuture<Void> completableFuture = blobStore.getAsyncTransferManager()
+                .asyncUploadStream(s3AsyncClient, inputStream, blobStore.bucket(), blobName,priority,  blobStore.getStatsMetricPublisher());
+            completableFuture.whenComplete((response, throwable) -> {
+                if (throwable == null) {
+                    completionListener.onResponse(response);
+                } else {
+                    Exception ex = throwable instanceof Error ? new Exception(throwable) : (Exception) throwable;
+                    completionListener.onFailure(ex);
+                }
+            });
+//            SocketAccess.doPrivilegedIOException(() -> {
+//                if (blobSize <= getLargeBlobThresholdInBytes()) {
+//                    logger.info("Executing single upload");
+//                    executeSingleUpload(blobStore, buildKey(blobName), inputStream, blobSize, metadata);
+//                } else {
+//                    logger.info("Executing multiplart upload");
+//
+//                    executeMultipartUpload(blobStore, buildKey(blobName), inputStream, blobSize, metadata);
+//                }
+//                return null;
+//            });
+        }
+    }
+
+    public void asyncStreamUpload(String blobName, InputStream inputStream,  ActionListener<Void> completionListener) {
+
+        try (AmazonAsyncS3Reference amazonS3Reference = SocketAccess.doPrivileged(blobStore::asyncClientReference)) {
+
+            S3CrtAsyncClient s3AsyncClient = (S3CrtAsyncClient) amazonS3Reference.get().crtClient();
+            CompletableFuture<Void> completableFuture = blobStore.getAsyncTransferManager().asyncUpload(s3AsyncClient, blobName, blobStore.bucket(),  inputStream, blobStore.getStatsMetricPublisher());
+
+            completableFuture.whenComplete((response, throwable) -> {
+                logger.info(" TIMESTAMP whenComplete {} ", System.currentTimeMillis());
+
+                if (throwable == null) {
+                    completionListener.onResponse(null);
+                } else {
+                    Exception ex = throwable instanceof Error ? new Exception(throwable) : (Exception) throwable;
+                    completionListener.onFailure(ex);
+                }
+            });
+        }
     }
 
     @Override

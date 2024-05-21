@@ -10,26 +10,40 @@ package org.opensearch.cluster.routing.remote;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.store.IndexInput;
 import org.opensearch.Version;
+import org.opensearch.action.LatchedActionListener;
 import org.opensearch.cluster.ClusterState;
+import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.routing.IndexRoutingTable;
 import org.opensearch.cluster.routing.RoutingTable;
+import org.opensearch.common.CheckedRunnable;
+import org.opensearch.common.blobstore.AsyncMultiStreamBlobContainer;
 import org.opensearch.common.blobstore.BlobContainer;
 import org.opensearch.common.blobstore.BlobPath;
+import org.opensearch.common.blobstore.stream.write.WritePriority;
+import org.opensearch.common.blobstore.transfer.RemoteTransferContainer;
+import org.opensearch.common.blobstore.transfer.stream.OffsetRangeIndexInputStream;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 
 import org.opensearch.common.blobstore.BlobContainer;
+import org.opensearch.common.lucene.store.ByteArrayIndexInput;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.io.IOUtils;
+import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.index.Index;
 import org.opensearch.gateway.remote.ClusterMetadataManifest;
 import org.opensearch.gateway.remote.RemoteClusterStateService;
+import org.opensearch.gateway.remote.RemoteClusterStateUtils;
 import org.opensearch.gateway.remote.routingtable.IndexRoutingTableInputStream;
 import org.opensearch.gateway.remote.routingtable.IndexRoutingTableInputStreamReader;
 import org.opensearch.index.remote.RemoteStoreUtils;
+import org.opensearch.index.store.exception.ChecksumCombinationException;
 import org.opensearch.node.Node;
 import org.opensearch.node.remotestore.RemoteStoreNodeAttribute;
 import org.opensearch.repositories.RepositoriesService;
@@ -49,6 +63,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import static org.opensearch.common.blobstore.transfer.RemoteTransferContainer.checksumOfChecksum;
+import static org.opensearch.gateway.remote.RemoteClusterStateUtils.FORMAT_PARAMS;
 import static org.opensearch.gateway.remote.RemoteClusterStateUtils.getCusterMetadataBasePath;
 import static org.opensearch.node.remotestore.RemoteStoreNodeAttribute.isRemoteRoutingTableEnabled;
 
@@ -102,6 +118,103 @@ public class RemoteRoutingTableService implements Closeable {
         return uploadedIndices;
     }
 
+    public List<IndexRoutingTable> getChangedIndicesRouting( ClusterState previousClusterState,
+                                   ClusterState clusterState) {
+        Map<String, IndexRoutingTable> previousIndexRoutingTable = previousClusterState.getRoutingTable().getIndicesRouting();
+
+        List<IndexRoutingTable> changedIndicesRouting = new ArrayList<>();
+
+        for (IndexRoutingTable indexRouting : clusterState.getRoutingTable().getIndicesRouting().values()) {
+            if (!(previousIndexRoutingTable.containsKey(indexRouting.getIndex().getName()) && indexRouting.equals(previousIndexRoutingTable.get(indexRouting.getIndex().getName())))) {
+                changedIndicesRouting.add(indexRouting);
+                logger.info("changedIndicesRouting {}", indexRouting.prettyPrint());
+
+            }
+        }
+
+        return changedIndicesRouting;
+
+    }
+
+    public CheckedRunnable<IOException> getIndexRoutingAsyncAction(
+        ClusterState clusterState,
+        IndexRoutingTable indexRouting,
+        LatchedActionListener<ClusterMetadataManifest.UploadedMetadata> latchedActionListener
+    ) throws IOException {
+
+        //TODO: Integrate with optimized S3 prefix for index routing file path.
+        BlobPath custerMetadataBasePath = getCusterMetadataBasePath(blobStoreRepository, clusterState.getClusterName().value(),
+            clusterState.metadata().clusterUUID());
+        logger.info("custerMetadataBasePath {}", custerMetadataBasePath);
+
+        final BlobContainer blobContainer = blobStoreRepository.blobStore().blobContainer(custerMetadataBasePath.add(INDEX_ROUTING_PATH_TOKEN).add(indexRouting.getIndex().getUUID()));
+        logger.info("full path  {}", blobContainer.path());
+
+        final String fileName = getIndexRoutingFileName();
+        logger.info("fileName {}", fileName);
+
+        ActionListener<Void> completionListener = ActionListener.wrap(
+            resp -> latchedActionListener.onResponse(
+                new ClusterMetadataManifest.UploadedIndexMetadata(
+
+                    indexRouting.getIndex().getName(),
+                    indexRouting.getIndex().getUUID(),
+                    blobContainer.path().buildAsString() + fileName,
+                    "indexRouting--"
+                )
+            ),
+            ex -> latchedActionListener.onFailure(new RemoteClusterStateUtils.RemoteStateTransferException(indexRouting.getIndex().toString(), ex))
+        );
+
+        if (blobContainer instanceof AsyncMultiStreamBlobContainer == false) {
+            logger.info("TRYING FILE UPLOAD");
+
+            return () -> {
+                logger.info("Going to upload {}", indexRouting.prettyPrint());
+                uploadIndex(indexRouting, clusterState.getRoutingTable().version(), custerMetadataBasePath);
+                logger.info("upload done {}", indexRouting.prettyPrint());
+
+                completionListener.onResponse(null);
+                logger.info("response done {}", indexRouting.prettyPrint());
+
+            };
+        }
+
+//        try (
+//            InputStream indexRoutingStream = new IndexRoutingTableInputStream(indexRouting);
+//            IndexInput input = new ByteArrayIndexInput("indexrouting", indexRoutingStream.readAllBytes())) {
+////            long expectedChecksum;
+////            try {
+////                expectedChecksum = checksumOfChecksum(input.clone(), 8);
+////            } catch (Exception e) {
+////                throw e;
+////            }
+//            try (
+//
+//                RemoteTransferContainer remoteTransferContainer = new RemoteTransferContainer(
+//                    fileName,
+//                    fileName,
+//                    input.length(),
+//                    true,
+//                    WritePriority.URGENT,
+//                    (size, position) -> new OffsetRangeIndexInputStream(input, size, position),
+//                    null,
+//                    false
+//                )
+//            ) {
+//                return () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncBlobUpload(remoteTransferContainer.createWriteContext(), completionListener);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+        logger.info("TRYING S3 UPLOAD");
+        InputStream indexRoutingStream = new IndexRoutingTableInputStream(indexRouting);
+        logger.info("Going to upload {}", indexRouting.prettyPrint());
+
+        //return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncStreamUpload(fileName, indexRoutingStream, completionListener);
+        return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncWriteBlob(fileName, indexRoutingStream, false, null, WritePriority.URGENT, completionListener );
+    }
+
     public List<ClusterMetadataManifest.UploadedIndexMetadata> writeIncrementalRoutingTable(
         ClusterState previousClusterState,
         ClusterState clusterState,
@@ -127,6 +240,19 @@ public class RemoteRoutingTableService implements Closeable {
             }
         }
         return uploadedIndices;
+    }
+
+    public List<ClusterMetadataManifest.UploadedIndexMetadata> getAllUploadedIndicesRouting(ClusterMetadataManifest previousManifest, List<ClusterMetadataManifest.UploadedIndexMetadata> indicesRoutingToUpload) {
+        final Map<String, ClusterMetadataManifest.UploadedIndexMetadata> allUploadedIndicesRouting = previousManifest.getIndicesRouting()
+            .stream()
+            .collect(Collectors.toMap(ClusterMetadataManifest.UploadedIndexMetadata::getIndexName, Function.identity()));
+        indicesRoutingToUpload.forEach(
+            uploadedIndexMetadata -> allUploadedIndicesRouting.put(uploadedIndexMetadata.getIndexName(), uploadedIndexMetadata)
+        );
+
+        logger.info("allUploadedIndicesRouting ROUTING {}", allUploadedIndicesRouting);
+
+        return new ArrayList<>(allUploadedIndicesRouting.values());
     }
 
     private ClusterMetadataManifest.UploadedIndexMetadata uploadIndex(IndexRoutingTable indexRouting, long routingTableVersion, BlobPath custerMetadataBasePath) {
@@ -199,5 +325,6 @@ public class RemoteRoutingTableService implements Closeable {
         assert repository instanceof BlobStoreRepository : "Repository should be instance of BlobStoreRepository";
         blobStoreRepository = (BlobStoreRepository) repository;
     }
+
 
 }

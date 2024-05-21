@@ -11,6 +11,7 @@ package org.opensearch.common.blobstore;
 import org.opensearch.common.StreamContext;
 import org.opensearch.common.blobstore.stream.read.ReadContext;
 import org.opensearch.common.blobstore.stream.write.WriteContext;
+import org.opensearch.common.blobstore.stream.write.WritePriority;
 import org.opensearch.common.crypto.CryptoHandler;
 import org.opensearch.common.crypto.DecryptedRangedStreamProvider;
 import org.opensearch.common.io.InputStreamContainer;
@@ -19,6 +20,7 @@ import org.opensearch.core.action.ActionListener;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +44,17 @@ public class AsyncMultiStreamEncryptedBlobContainer<T, U> extends EncryptedBlobC
     public void asyncBlobUpload(WriteContext writeContext, ActionListener<Void> completionListener) throws IOException {
         EncryptedWriteContext<T, U> encryptedWriteContext = new EncryptedWriteContext<>(writeContext, cryptoHandler);
         blobContainer.asyncBlobUpload(encryptedWriteContext, completionListener);
+    }
+
+    @Override
+    public void asyncWriteBlob(String blobName, InputStream inputStream, boolean failIfAlreadyExists, Map<String, String> metadata, WritePriority priority, ActionListener<Void> completionListener) throws IOException {
+        throw new RuntimeException("Mehtod not implemented for encryption");
+
+    }
+
+    @Override
+    public void asyncStreamUpload(String blobName, InputStream inputStream, ActionListener<Void> completionListener) {
+        throw new RuntimeException("Mehtod not implemented for encryption");
     }
 
     @Override

@@ -63,4 +63,12 @@ grant {
   permission java.io.FilePermission "config", "read";
 
   permission java.lang.RuntimePermission "accessDeclaredMembers";
+  permission java.lang.RuntimePermission "loadLibrary.aws-crt-jni";
+  permission java.lang.RuntimePermission "loadLibrary.*";
+    permission java.lang.RuntimePermission "shutdownHooks";
+
 };
+
+  grant codeBase "${codebase.aws-crt-jni}" {
+    permission java.lang.RuntimePermission "loadLibrary.*";
+  };

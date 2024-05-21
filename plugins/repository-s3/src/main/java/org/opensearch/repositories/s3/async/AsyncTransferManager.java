@@ -8,20 +8,14 @@
 
 package org.opensearch.repositories.s3.async;
 
+import org.opensearch.core.action.ActionListener;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
+import software.amazon.awssdk.core.async.BlockingInputStreamAsyncRequestBody;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.HttpStatusCode;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
-import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse;
-import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
-import software.amazon.awssdk.services.s3.model.CompletedPart;
-import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest;
-import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.internal.crt.S3CrtAsyncClient;
+import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.utils.CollectionUtils;
 import software.amazon.awssdk.utils.CompletableFutureUtils;
 
@@ -69,6 +63,7 @@ public final class AsyncTransferManager {
      * The max number of parts on S3 side is 10,000
      */
     private static final long MAX_UPLOAD_PARTS = 10_000;
+    private static final Logger logger = LogManager.getLogger(AsyncTransferManager.class);
 
     /**
      * Construct a new object of AsyncTransferManager
@@ -120,6 +115,90 @@ public final class AsyncTransferManager {
         return returnFuture;
     }
 
+    public CompletableFuture<Void> asyncUploadStream(
+        S3AsyncClient s3AsyncClient,
+        InputStream inputStream,
+        String bucket,
+        String key,
+        WritePriority priority, StatsMetricPublisher statsMetricPublisher
+    ) {
+
+        CompletableFuture<Void> returnFuture = new CompletableFuture<>();
+        try {
+            PutObjectRequest.Builder putObjectRequestBuilder = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentLength(null)
+                .overrideConfiguration(o -> o.addMetricPublisher(statsMetricPublisher.putObjectMetricPublisher));
+
+//            if (CollectionUtils.isNotEmpty(uploadRequest.getMetadata())) {
+//                putObjectRequestBuilder.metadata(uploadRequest.getMetadata());
+//            }
+//            if (uploadRequest.doRemoteDataIntegrityCheck()) {
+//                putObjectRequestBuilder.checksumAlgorithm(ChecksumAlgorithm.CRC32);
+//                putObjectRequestBuilder.checksumCRC32(base64StringFromLong(uploadRequest.getExpectedChecksum()));
+//            }
+            ExecutorService streamReadExecutor;
+            if (priority == WritePriority.URGENT) {
+                streamReadExecutor = urgentExecutorService;
+            } else if (priority == WritePriority.HIGH) {
+                streamReadExecutor = priorityExecutorService;
+            } else {
+                streamReadExecutor = executorService;
+            }
+
+            CompletableFuture<Void> putObjectFuture = SocketAccess.doPrivileged(
+                () -> s3AsyncClient.putObject(
+                    putObjectRequestBuilder.build(),
+                    AsyncRequestBody.fromInputStream(inputStream, null, streamReadExecutor)
+                ).handle((resp, throwable) -> {
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        log.error(
+                            () -> new ParameterizedMessage("Failed to close stream while uploading single file {}.", key),
+                            e
+                        );
+                    }
+                    if (throwable != null) {
+                        Throwable unwrappedThrowable = ExceptionsHelper.unwrap(throwable, S3Exception.class);
+                        if (unwrappedThrowable != null) {
+                            S3Exception s3Exception = (S3Exception) unwrappedThrowable;
+                            if (s3Exception.statusCode() == HttpStatusCode.BAD_REQUEST
+                                && "BadDigest".equals(s3Exception.awsErrorDetails().errorCode())) {
+                                throw new RuntimeException(new CorruptFileException(s3Exception, key));
+                            }
+                        }
+                        returnFuture.completeExceptionally(throwable);
+                    } else {
+//                        try {
+//                            uploadRequest.getUploadFinalizer().accept(true);
+//                        } catch (IOException e) {
+//                            throw new RuntimeException(e);
+//                        }
+                        returnFuture.complete(null);
+                    }
+
+                    return null;
+                }).handle((resp, throwable) -> {
+                    if (throwable != null) {
+//                        deleteUploadedObject(s3AsyncClient, uploadRequest);
+                        returnFuture.completeExceptionally(throwable);
+                    }
+
+                    return null;
+                })
+            );
+
+            CompletableFutureUtils.forwardExceptionTo(returnFuture, putObjectFuture);
+            CompletableFutureUtils.forwardResultTo(putObjectFuture, returnFuture);
+
+        } catch (Throwable throwable) {
+            returnFuture.completeExceptionally(throwable);
+        }
+
+        return returnFuture;
+    }
     private void uploadInParts(
         S3AsyncClient s3AsyncClient,
         UploadRequest uploadRequest,
@@ -162,6 +241,73 @@ public final class AsyncTransferManager {
             }
         });
     }
+
+
+    public CompletableFuture<Void> asyncUpload(S3CrtAsyncClient s3AsyncClient,  String blobName,String bucket, InputStream inputStream, StatsMetricPublisher statsMetricPublisher) {
+        PutObjectRequest.Builder putObjectRequestBuilder = PutObjectRequest.builder()
+            .bucket(bucket)
+            .key(blobName);
+
+
+        logger.info(" TIMESTAMP before writeInputStream {} ", System.currentTimeMillis());
+        //body.writeInputStream(inputStream);
+        logger.info(" TIMESTAMP after writeInputStream {} ", System.currentTimeMillis());
+        CompletableFuture<Void> returnFuture = new CompletableFuture<>();
+        //BlockingInputStreamAsyncRequestBody body = AsyncRequestBody.forBlockingInputStream(null);
+        CompletableFuture<Void> putObjectFuture = SocketAccess.doPrivileged(
+            () ->
+                s3AsyncClient.putObject(
+                    putObjectRequestBuilder.build(),
+                    AsyncRequestBody.fromInputStream(inputStream, null, urgentExecutorService)
+//                    body);
+//                body.writeInputStream(inputStream);
+//                body.subscribe();
+
+            ).handle((resp, throwable) -> {
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    log.error(
+                        () -> new ParameterizedMessage("Failed to close stream while uploading single file {}.",blobName),
+                        e
+                    );
+                }
+                if (throwable != null) {
+                    Throwable unwrappedThrowable = ExceptionsHelper.unwrap(throwable, S3Exception.class);
+                    if (unwrappedThrowable != null) {
+                        S3Exception s3Exception = (S3Exception) unwrappedThrowable;
+                        if (s3Exception.statusCode() == HttpStatusCode.BAD_REQUEST
+                            && "BadDigest".equals(s3Exception.awsErrorDetails().errorCode())) {
+                            throw new RuntimeException(new CorruptFileException(s3Exception,blobName));
+                        }
+                    }
+                    returnFuture.completeExceptionally(throwable);
+                } else {
+//                    try {
+//                        uploadRequest.getUploadFinalizer().accept(true);
+//                    } catch (IOException e) {
+//                        throw new RuntimeException(e);
+//                    }
+                    returnFuture.complete(null);
+                }
+
+                return null;
+            }).handle((resp, throwable) -> {
+                if (throwable != null) {
+                    //deleteUploadedObject(s3AsyncClient, uploadRequest);
+                    returnFuture.completeExceptionally(throwable);
+                }
+
+                return null;
+            })
+        );
+
+        CompletableFutureUtils.forwardExceptionTo(returnFuture, putObjectFuture);
+        CompletableFutureUtils.forwardResultTo(putObjectFuture, returnFuture);
+        return returnFuture;
+
+    }
+
 
     private void doUploadInParts(
         S3AsyncClient s3AsyncClient,
@@ -413,4 +559,5 @@ public final class AsyncTransferManager {
             return null;
         });
     }
+
 }

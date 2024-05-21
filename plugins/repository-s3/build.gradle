@@ -69,6 +69,10 @@ dependencies {
   api "software.amazon.awssdk:aws-query-protocol:${versions.aws}"
   api "software.amazon.awssdk:sts:${versions.aws}"
   api "software.amazon.awssdk:netty-nio-client:${versions.aws}"
+  api "software.amazon.awssdk:aws-crt-client:${versions.aws}"
+  api "software.amazon.awssdk.crt:aws-crt:0.21.16"
+  api "software.amazon.awssdk:crt-core:${versions.aws}"
+
 
   api "org.apache.httpcomponents:httpclient:${versions.httpclient}"
   api "org.apache.httpcomponents:httpcore:${versions.httpcore}"
@@ -548,7 +552,6 @@ thirdPartyAudit {
     'software.amazon.awssdk.crtcore.CrtConnectionHealthConfiguration',
     'software.amazon.awssdk.crtcore.CrtConnectionHealthConfiguration$Builder',
     'software.amazon.awssdk.crtcore.CrtConnectionHealthConfiguration$DefaultBuilder',
-    'software.amazon.awssdk.crtcore.CrtProxyConfiguration',
     'software.amazon.awssdk.crtcore.CrtProxyConfiguration$Builder',
     'software.amazon.awssdk.crtcore.CrtProxyConfiguration$DefaultBuilder',
     'software.amazon.eventstream.HeaderValue',

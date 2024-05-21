@@ -8,12 +8,16 @@
 
 package org.opensearch.common.blobstore;
 
+import org.opensearch.common.Nullable;
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.common.blobstore.stream.read.ReadContext;
 import org.opensearch.common.blobstore.stream.write.WriteContext;
+import org.opensearch.common.blobstore.stream.write.WritePriority;
 import org.opensearch.core.action.ActionListener;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
 
 /**
  * An extension of {@link BlobContainer} that adds {@link AsyncMultiStreamBlobContainer#asyncBlobUpload} to allow
@@ -33,7 +37,9 @@ public interface AsyncMultiStreamBlobContainer extends BlobContainer {
      * @throws IOException if any of the input streams could not be read, or the target blob could not be written to
      */
     void asyncBlobUpload(WriteContext writeContext, ActionListener<Void> completionListener) throws IOException;
+    void asyncWriteBlob(String blobName, InputStream inputStream, boolean failIfAlreadyExists, @Nullable Map<String, String> metadata, WritePriority priority, ActionListener<Void> completionListener) throws IOException;
 
+    void asyncStreamUpload(String blobName, InputStream inputStream, ActionListener<Void> completionListener);
     /**
      * Creates an async callback of a {@link ReadContext} containing the multipart streams for a specified blob within the container.
      * @param blobName The name of the blob for which the {@link ReadContext} needs to be fetched.
