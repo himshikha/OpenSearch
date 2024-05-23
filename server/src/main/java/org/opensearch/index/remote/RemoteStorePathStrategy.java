@@ -87,9 +87,12 @@ public class RemoteStorePathStrategy {
         public PathInput(BlobPath basePath, String indexUUID, String shardId, DataCategory dataCategory, DataType dataType) {
             this.basePath = Objects.requireNonNull(basePath);
             this.indexUUID = Objects.requireNonNull(indexUUID);
-            this.shardId = Objects.requireNonNull(shardId);
-            this.dataCategory = Objects.requireNonNull(dataCategory);
-            this.dataType = Objects.requireNonNull(dataType);
+//            this.shardId = Objects.requireNonNull(shardId);
+//            this.dataCategory = Objects.requireNonNull(dataCategory);
+//            this.dataType = Objects.requireNonNull(dataType);
+            this.shardId =(shardId);
+            this.dataCategory = (dataCategory);
+            this.dataType = (dataType);
         }
 
         BlobPath basePath() {

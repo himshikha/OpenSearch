@@ -111,13 +111,20 @@ public class RemoteStoreEnums {
             @Override
             public BlobPath generatePath(PathInput pathInput, PathHashAlgorithm hashAlgorithm) {
                 assert Objects.nonNull(hashAlgorithm) : "hashAlgorithm is expected to be non-null";
-                return BlobPath.cleanPath()
+                BlobPath path =  BlobPath.cleanPath()
                     .add(hashAlgorithm.hash(pathInput))
                     .add(pathInput.basePath())
-                    .add(pathInput.indexUUID())
-                    .add(pathInput.shardId())
-                    .add(pathInput.dataCategory().getName())
-                    .add(pathInput.dataType().getName());
+                    .add(pathInput.indexUUID());
+                if (pathInput.shardId() != null) {
+                    path.add(pathInput.shardId());
+                }
+                if(pathInput.dataCategory() != null){
+                    path.add(pathInput.dataCategory().getName());
+                }
+                if(pathInput.dataType() != null ) {
+                    path.add(pathInput.dataType().getName());
+                }
+                return path;
             }
 
             @Override
@@ -188,11 +195,11 @@ public class RemoteStoreEnums {
         public BlobPath path(PathInput pathInput, PathHashAlgorithm hashAlgorithm) {
             DataCategory dataCategory = pathInput.dataCategory();
             DataType dataType = pathInput.dataType();
-            assert dataCategory.isSupportedDataType(dataType) : "category:"
-                + dataCategory
-                + " type:"
-                + dataType
-                + " are not supported together";
+//            assert dataCategory.isSupportedDataType(dataType) : "category:"
+//                + dataCategory
+//                + " type:"
+//                + dataType
+//                + " are not supported together";
             return generatePath(pathInput, hashAlgorithm);
         }
 
@@ -227,8 +234,7 @@ public class RemoteStoreEnums {
         FNV_1A_BASE64(0) {
             @Override
             String hash(PathInput pathInput) {
-                String input = pathInput.indexUUID() + pathInput.shardId() + pathInput.dataCategory().getName() + pathInput.dataType()
-                    .getName();
+                String input = pathInput.indexUUID() + pathInput.shardId() + (pathInput.dataCategory() != null ? pathInput.dataCategory().getName(): "" )+ (pathInput.dataType()!= null ?  pathInput.dataType().getName(): "");
                 long hash = FNV1a.hash64(input);
                 return longToUrlBase64(hash);
             }
