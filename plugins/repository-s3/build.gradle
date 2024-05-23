@@ -70,7 +70,7 @@ dependencies {
   api "software.amazon.awssdk:sts:${versions.aws}"
   api "software.amazon.awssdk:netty-nio-client:${versions.aws}"
   api "software.amazon.awssdk:aws-crt-client:${versions.aws}"
-  api "software.amazon.awssdk.crt:aws-crt:0.21.16"
+  api "software.amazon.awssdk.crt:aws-crt:0.29.19"
   api "software.amazon.awssdk:crt-core:${versions.aws}"
 
 

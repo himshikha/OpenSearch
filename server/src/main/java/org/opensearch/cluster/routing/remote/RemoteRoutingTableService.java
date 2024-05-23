@@ -211,8 +211,8 @@ public class RemoteRoutingTableService implements Closeable {
         InputStream indexRoutingStream = new IndexRoutingTableInputStream(indexRouting);
         logger.info("Going to upload {}", indexRouting.prettyPrint());
 
-        //return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncStreamUpload(fileName, indexRoutingStream, completionListener);
-        return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncWriteBlob(fileName, indexRoutingStream, false, null, WritePriority.URGENT, completionListener );
+        return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncStreamUpload(fileName, indexRoutingStream, completionListener);
+        //return  () -> ((AsyncMultiStreamBlobContainer) blobContainer).asyncWriteBlob(fileName, indexRoutingStream, false, null, WritePriority.URGENT, completionListener );
     }
 
     public List<ClusterMetadataManifest.UploadedIndexMetadata> writeIncrementalRoutingTable(
