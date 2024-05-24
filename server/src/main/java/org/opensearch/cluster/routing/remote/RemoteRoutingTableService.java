@@ -10,7 +10,6 @@ package org.opensearch.cluster.routing.remote;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.io.IOUtils;
@@ -45,18 +44,12 @@ public class RemoteRoutingTableService implements Closeable {
     private static final Logger logger = LogManager.getLogger(RemoteRoutingTableService.class);
     private final Settings settings;
     private final Supplier<RepositoriesService> repositoriesService;
-    private final ClusterSettings clusterSettings;
     private BlobStoreRepository blobStoreRepository;
 
-    public RemoteRoutingTableService(
-        Supplier<RepositoriesService> repositoriesService,
-        Settings settings,
-        ClusterSettings clusterSettings
-    ) {
+    public RemoteRoutingTableService(Supplier<RepositoriesService> repositoriesService, Settings settings) {
         assert isRemoteRoutingTableEnabled(settings) : "Remote routing table is not enabled";
         this.repositoriesService = repositoriesService;
         this.settings = settings;
-        this.clusterSettings = clusterSettings;
     }
 
     @Override
