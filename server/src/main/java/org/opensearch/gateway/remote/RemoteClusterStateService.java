@@ -172,6 +172,12 @@ public class RemoteClusterStateService implements Closeable {
     /**
      * Manifest format compatible with codec v2, where global metadata file is replaced with multiple metadata attribute files
      */
+    public static final ChecksumBlobStoreFormat<ClusterMetadataManifest> CLUSTER_METADATA_MANIFEST_FORMAT_V2 =
+        new ChecksumBlobStoreFormat<>("cluster-metadata-manifest", METADATA_MANIFEST_NAME_FORMAT, ClusterMetadataManifest::fromXContentV2);
+
+    /**
+     * Manifest format compatible with codec v3, where global metadata file is replaced with multiple metadata attribute files
+     */
     public static final ChecksumBlobStoreFormat<ClusterMetadataManifest> CLUSTER_METADATA_MANIFEST_FORMAT = new ChecksumBlobStoreFormat<>(
         "cluster-metadata-manifest",
         METADATA_MANIFEST_NAME_FORMAT,
@@ -1533,6 +1539,8 @@ public class RemoteClusterStateService implements Closeable {
         long codecVersion = getManifestCodecVersion(fileName);
         if (codecVersion == MANIFEST_CURRENT_CODEC_VERSION) {
             return CLUSTER_METADATA_MANIFEST_FORMAT;
+        } else if (codecVersion == ClusterMetadataManifest.CODEC_V2) {
+            return CLUSTER_METADATA_MANIFEST_FORMAT_V2;
         } else if (codecVersion == ClusterMetadataManifest.CODEC_V1) {
             return CLUSTER_METADATA_MANIFEST_FORMAT_V1;
         } else if (codecVersion == ClusterMetadataManifest.CODEC_V0) {

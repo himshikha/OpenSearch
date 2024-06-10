@@ -539,6 +539,7 @@ public class ClusterMetadataManifestTests extends OpenSearchTestCase {
             "routing-path",
             InternalRemoteRoutingTableService.INDEX_ROUTING_METADATA_PREFIX
         );
+
         ClusterMetadataManifest originalManifest = ClusterMetadataManifest.builder()
             .clusterTerm(1L)
             .stateVersion(1L)
