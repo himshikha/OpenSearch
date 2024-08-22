@@ -403,6 +403,18 @@ public class RoutingTable implements Iterable<IndexRoutingTable>, Diffable<Routi
         }
     }
 
+    public void writeToSorted(StreamOutput out) throws IOException {
+        out.writeLong(version);
+        out.writeVInt(indicesRouting.size());
+        indicesRouting.values().stream().sorted().forEach(index -> {
+            try {
+                index.writeToSorted(out);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     private static class RoutingTableDiff implements Diff<RoutingTable> {
 
         private final long version;
