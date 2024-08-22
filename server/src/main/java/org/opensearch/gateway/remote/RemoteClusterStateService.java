@@ -20,6 +20,7 @@ import org.opensearch.cluster.block.ClusterBlocks;
 import org.opensearch.cluster.coordination.CoordinationMetadata;
 import org.opensearch.cluster.metadata.DiffableStringMap;
 import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.cluster.metadata.Manifest;
 import org.opensearch.cluster.metadata.Metadata;
 import org.opensearch.cluster.metadata.Metadata.XContentContext;
 import org.opensearch.cluster.metadata.TemplatesMetadata;
@@ -1353,8 +1354,8 @@ public class RemoteClusterStateService implements Closeable {
                 includeEphemeral
             );
 
-            if (checksumValidationEnabled && manifest.getClusterStateChecksum() != null) {
-                validateClusterStateFromChecksum(manifest.getClusterStateChecksum(), clusterState);
+            if (includeEphemeral && checksumValidationEnabled && manifest.getClusterStateChecksum() != null) {
+                validateClusterStateFromChecksum(manifest, clusterState, clusterName, localNodeId, true);
             }
             return clusterState;
         } else {
@@ -1470,25 +1471,51 @@ public class RemoteClusterStateService implements Closeable {
             .build();
 
         if (checksumValidationEnabled && manifest.getClusterStateChecksum() != null) {
-            validateClusterStateFromChecksum(manifest.getClusterStateChecksum(), clusterState);
+            validateClusterStateFromChecksum(manifest, clusterState, previousState.getClusterName().value(), localNodeId,false);
         }
         return clusterState;
     }
 
-    void validateClusterStateFromChecksum(ClusterStateChecksum clusterStateChecksum, ClusterState clusterState) {
+    void validateClusterStateFromChecksum(ClusterMetadataManifest manifest, ClusterState clusterState,String clusterName, String localNodeId,  boolean isFullStateDownload) throws IOException {
         ClusterStateChecksum newClusterStateChecksum = new ClusterStateChecksum(clusterState);
-        if (!newClusterStateChecksum.equals(clusterStateChecksum)) {
-            List<String> failedValidation = newClusterStateChecksum.getMismatchEntities(clusterStateChecksum);
-            logger.error(
-                () -> new ParameterizedMessage(
-                    "Cluster state checksums do not match. Checksum from manifest {}, checksum from created cluster state {}. Entities failing validation {}",
-                    clusterStateChecksum,
-                    newClusterStateChecksum,
-                    failedValidation
-                )
-            );
-            throw new IllegalStateException("Cluster state checksums do not match. Validation failed for " + failedValidation);
-        }
+            List<String> failedValidation = newClusterStateChecksum.getMismatchEntities(manifest.getClusterStateChecksum());
+            if(!failedValidation.isEmpty()) {
+                logger.error(
+                    () -> new ParameterizedMessage(
+                        "Cluster state checksums do not match. Checksum from manifest {}, checksum from created cluster state {}. Entities failing validation {}",
+                        manifest.getClusterStateChecksum(),
+                        newClusterStateChecksum,
+                        failedValidation
+                    )
+                );
+                if(isFullStateDownload) {
+                    throw new IllegalStateException("Cluster state checksums do not match. Validation failed for " + failedValidation);
+                }
+                //download full cluster state and match against state created for the failing entities
+                ClusterState fullClusterState = readClusterStateInParallel(
+                    ClusterState.builder(new ClusterName(clusterName)).build(),
+                    manifest,
+                    manifest.getClusterUUID(),
+                    localNodeId,
+                    manifest.getIndices(),
+                    manifest.getCustomMetadataMap(),
+                    manifest.getCoordinationMetadata() != null,
+                    manifest.getSettingsMetadata() != null,
+                    manifest.getTransientSettingsMetadata() != null,
+                    manifest.getTemplatesMetadata() != null,
+                     manifest.getDiscoveryNodesMetadata() != null,
+                    manifest.getClusterBlocksMetadata() != null,
+                     manifest.getIndicesRouting(),
+                    manifest.getHashesOfConsistentSettings() != null,
+                    manifest.getClusterStateCustomMap() ,
+                    false,
+                    true
+                );
+                Diff<ClusterState> diff = fullClusterState.diff(clusterState);
+                logger.error(() -> new ParameterizedMessage("Diff in cluster state read from diff and full state downloads {}", diff));
+
+                throw new IllegalStateException("Cluster state checksums do not match. Validation failed for " + failedValidation);
+            }
     }
 
     /**

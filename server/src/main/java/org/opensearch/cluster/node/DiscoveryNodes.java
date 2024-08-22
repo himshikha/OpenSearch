@@ -699,10 +699,6 @@ public class DiscoveryNodes extends AbstractDiffable<DiscoveryNodes> implements 
             out.writeString(clusterManagerNodeId);
         }
         out.writeVInt(nodes.size());
-//        Map<String, DiscoveryNode> treeMap = new TreeMap<String, DiscoveryNode>(nodes);
-//        for (DiscoveryNode node : treeMap.values()) {
-//            node.writeTo(out);
-//        }
         for (DiscoveryNode node : this) {
             node.writeTo(out);
         }
