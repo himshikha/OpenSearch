@@ -1489,7 +1489,7 @@ public class RemoteClusterStateService implements Closeable {
                     )
                 );
                 if(isFullStateDownload) {
-                    throw new IllegalStateException("Cluster state checksums do not match. Validation failed for " + failedValidation);
+                    throw new IllegalStateException("Cluster state checksums do not match during full state read. Validation failed for " + failedValidation);
                 }
                 //download full cluster state and match against state created for the failing entities
                 ClusterState fullClusterState = readClusterStateInParallel(
@@ -1514,7 +1514,7 @@ public class RemoteClusterStateService implements Closeable {
                 Diff<ClusterState> diff = fullClusterState.diff(clusterState);
                 logger.error(() -> new ParameterizedMessage("Diff in cluster state read from diff and full state downloads {}", diff));
 
-                throw new IllegalStateException("Cluster state checksums do not match. Validation failed for " + failedValidation);
+                throw new IllegalStateException("Cluster state checksums do not match during diff read. Validation failed for " + failedValidation);
             }
     }
 
