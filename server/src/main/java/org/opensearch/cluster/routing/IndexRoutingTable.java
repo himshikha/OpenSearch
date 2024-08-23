@@ -383,7 +383,7 @@ public class IndexRoutingTable extends AbstractDiffable<IndexRoutingTable> imple
         shards.values().stream().sorted(Comparator.comparing(IndexShardRoutingTable::getShardId)).forEach(indexShard ->
             {
                 try {
-                    IndexShardRoutingTable.Builder.writeToThin(indexShard, out);
+                    IndexShardRoutingTable.Builder.writeSize(indexShard, out);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }

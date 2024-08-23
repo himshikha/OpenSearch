@@ -1135,6 +1135,10 @@ public class IndexShardRoutingTable implements Iterable<ShardRouting> {
             }
         }
 
+        public static void writeSize(IndexShardRoutingTable indexShard, StreamOutput out) throws IOException {
+            out.writeVInt(indexShard.shardId.id());
+            out.writeVInt(indexShard.shards.size());
+        }
     }
 
     @Override
