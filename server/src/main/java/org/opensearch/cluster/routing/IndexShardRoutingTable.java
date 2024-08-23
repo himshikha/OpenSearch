@@ -1145,8 +1145,8 @@ public class IndexShardRoutingTable implements Iterable<ShardRouting> {
             out.writeVInt(indexShard.shardId.id());
             out.writeVInt(indexShard.shards.size());
             //Order allocated shards by allocationId and unallocated shards by hashcode
-            TreeSet<ShardRouting> allocatedShards = new TreeSet<>(Comparator.comparing(o -> o.allocationId().getId()));
-            TreeSet<ShardRouting> unallocatedShards = new TreeSet<>(Comparator.comparing(ShardRouting::hashCode));
+            List<ShardRouting> allocatedShards = new ArrayList<>();
+            List<ShardRouting> unallocatedShards = new ArrayList<>();
             indexShard.shards.forEach(shard -> {
                 if (shard.allocationId() == null) {
                     unallocatedShards.add(shard);
@@ -1154,6 +1154,8 @@ public class IndexShardRoutingTable implements Iterable<ShardRouting> {
                     allocatedShards.add(shard);
                 }
             });
+            allocatedShards.sort(Comparator.comparing(o -> o.allocationId().getId()));
+            unallocatedShards.sort(Comparator.comparing(ShardRouting::hashCode));
             out.writeCollection(allocatedShards);
             out.writeCollection(unallocatedShards);
         }
