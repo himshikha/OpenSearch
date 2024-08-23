@@ -101,9 +101,9 @@ public class ClusterStateChecksum implements ToXContentFragment, Writeable {
             templatesMetadataChecksum = checksumOut.getChecksum();
 
             checksumOut.reset();
-            clusterState.metadata().customs().forEach((key, custom) -> {
+            clusterState.metadata().customs().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
                 try {
-                    custom.writeTo(checksumOut);
+                    entry.getValue().writeTo(checksumOut);
                 } catch (IOException e) {
                     logger.error("Failed to create checksum for custom metadata.", e);
                     throw new RemoteStateTransferException("Failed to create checksum for custom metadata.", e);
@@ -118,7 +118,7 @@ public class ClusterStateChecksum implements ToXContentFragment, Writeable {
             checksumOut.reset();
             clusterState.metadata().indices().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach((entry -> {
                 try {
-                    entry.getValue().writeTo(checksumOut);
+                    entry.getValue().writeToSorted(checksumOut);
                 } catch (IOException e) {
                     logger.error("Failed to create checksum for index metadata.", e);
                     throw new RemoteStateTransferException("Failed to create checksum for index metadata.", e);
@@ -358,7 +358,7 @@ public class ClusterStateChecksum implements ToXContentFragment, Writeable {
 
     public List<String> getMismatchEntities(ClusterStateChecksum otherClusterStateChecksum) {
         if (this.clusterStateChecksum == otherClusterStateChecksum.clusterStateChecksum) {
-            logger.info("No mismatch in checksums.");
+            logger.debug("No mismatch in checksums.");
             return List.of();
         }
         List<String> mismatches = new ArrayList<>();

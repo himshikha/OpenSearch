@@ -60,6 +60,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -1138,6 +1139,23 @@ public class IndexShardRoutingTable implements Iterable<ShardRouting> {
         public static void writeSize(IndexShardRoutingTable indexShard, StreamOutput out) throws IOException {
             out.writeVInt(indexShard.shardId.id());
             out.writeVInt(indexShard.shards.size());
+        }
+
+        public static void writetoSorted(IndexShardRoutingTable indexShard, StreamOutput out) throws IOException {
+            out.writeVInt(indexShard.shardId.id());
+            out.writeVInt(indexShard.shards.size());
+            //Order allocated shards by allocationId and unallocated shards by hashcode
+            TreeSet<ShardRouting> allocatedShards = new TreeSet<>(Comparator.comparing(o -> o.allocationId().getId()));
+            TreeSet<ShardRouting> unallocatedShards = new TreeSet<>(Comparator.comparing(ShardRouting::hashCode));
+            indexShard.shards.forEach(shard -> {
+                if (shard.allocationId() == null) {
+                    unallocatedShards.add(shard);
+                } else {
+                    allocatedShards.add(shard);
+                }
+            });
+            out.writeCollection(allocatedShards);
+            out.writeCollection(unallocatedShards);
         }
     }
 
