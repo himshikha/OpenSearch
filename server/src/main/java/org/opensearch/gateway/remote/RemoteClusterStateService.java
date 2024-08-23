@@ -90,6 +90,7 @@ import java.util.stream.Collectors;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
+import static org.opensearch.cluster.ClusterState.CUSTOM_VALUE_SERIALIZER;
 import static org.opensearch.common.util.FeatureFlags.REMOTE_PUBLICATION_EXPERIMENTAL;
 import static org.opensearch.gateway.PersistedClusterStateService.SLOW_WRITE_LOGGING_THRESHOLD;
 import static org.opensearch.gateway.remote.ClusterMetadataManifest.CODEC_V2;
@@ -1511,9 +1512,60 @@ public class RemoteClusterStateService implements Closeable {
                     false,
                     true
                 );
-                Diff<ClusterState> diff = fullClusterState.diff(clusterState);
-                logger.error(() -> new ParameterizedMessage("Diff in cluster state read from diff and full state downloads {}", diff));
+                for(String failedEntity : failedValidation) {
+                    switch (failedEntity) {
+                        case ClusterStateChecksum.ROUTING_TABLE_CS:
+                            Diff<RoutingTable> routingTableDiff = fullClusterState.routingTable().diff(clusterState.routingTable());
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in routing table {}", routingTableDiff));
+                            break;
+                        case ClusterStateChecksum.NODES_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in discovery nodes {}",
+                                fullClusterState.nodes().diff(clusterState.nodes())));
+                            break;
+                        case ClusterStateChecksum.BLOCKS_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in cluster blocks {}",
+                                fullClusterState.blocks().diff(clusterState.blocks())));
+                            break;
+                        case ClusterStateChecksum.CUSTOMS_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in cluster state customs {}",
+                                DiffableUtils.diff(clusterState.customs(), fullClusterState.customs(), DiffableUtils.getStringKeySerializer(), CUSTOM_VALUE_SERIALIZER)));
+                            break;
+                        case ClusterStateChecksum.COORDINATION_MD_CS :
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in coordination md. current md {}, full state md {}",
+                                clusterState.metadata().coordinationMetadata(), fullClusterState.metadata().coordinationMetadata()));
+                            break;
+                        case ClusterStateChecksum.TRANSIENT_SETTINGS_MD_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in transient settings md. current md {}, full state md {}",
+                                clusterState.metadata().transientSettings(), fullClusterState.metadata().transientSettings()));
 
+                            break;
+                        case ClusterStateChecksum.SETTINGS_MD_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in settings md. current md {}, full state md {}",
+                                clusterState.metadata().settings(), fullClusterState.metadata().settings()));
+
+                            break;
+                        case ClusterStateChecksum.HASHES_MD_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in hashes md {}",
+                                ((DiffableStringMap)fullClusterState.metadata().hashesOfConsistentSettings()).diff((DiffableStringMap)clusterState.metadata().hashesOfConsistentSettings())));
+                            break;
+                        case ClusterStateChecksum.TEMPLATES_MD_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in templates md{}",
+                                fullClusterState.metadata().templatesMetadata().diff(clusterState.metadata().templatesMetadata())));
+                            break;
+                        case ClusterStateChecksum.CUSTOM_MD_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in customs md {}",
+                                DiffableUtils.diff(clusterState.metadata().customs(), fullClusterState.metadata().customs(), DiffableUtils.getStringKeySerializer(), Metadata.CUSTOM_VALUE_SERIALIZER)));
+                            break;
+                        case ClusterStateChecksum.INDICES_CS:
+                            logger.error(() -> new ParameterizedMessage("Failing Diff in discovery nodes {}",
+                                DiffableUtils.diff(clusterState.metadata().indices(), fullClusterState.metadata().indices(), DiffableUtils.getStringKeySerializer())));
+                            break;
+                            default:
+                            logger.error(() -> new ParameterizedMessage("Unknown failed entity {}",
+                                failedEntity));
+                            break;
+                    }
+                }
                 throw new IllegalStateException("Cluster state checksums do not match during diff read. Validation failed for " + failedValidation);
             }
     }

@@ -10,6 +10,7 @@ package org.opensearch.gateway.remote;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.DiffableStringMap;
 import org.opensearch.cluster.node.DiscoveryNode;
@@ -78,6 +79,7 @@ public class ClusterStateChecksum implements ToXContentFragment, Writeable {
         ) {
             clusterState.routingTable().writeToSorted(checksumOut);
             routingTableChecksum = checksumOut.getChecksum();
+            logger.debug(() -> new ParameterizedMessage("routing table checksum [{}]", routingTableChecksum));
 
             checksumOut.reset();
             clusterState.nodes().writeToSorted(checksumOut);

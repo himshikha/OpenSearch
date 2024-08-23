@@ -34,6 +34,7 @@ package org.opensearch.cluster.routing;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.node.DiscoveryNodes;
 import org.opensearch.common.Nullable;
@@ -1156,6 +1157,9 @@ public class IndexShardRoutingTable implements Iterable<ShardRouting> {
             });
             allocatedShards.sort(Comparator.comparing(o -> o.allocationId().getId()));
             unallocatedShards.sort(Comparator.comparing(ShardRouting::hashCode));
+            logger.debug(() -> new ParameterizedMessage("shardId {} allocatedShards {}", indexShard.shardId, allocatedShards));
+            logger.debug(() -> new ParameterizedMessage("shardId {} unallocatedShards {}", indexShard.shardId, unallocatedShards));
+
             out.writeCollection(allocatedShards);
             out.writeCollection(unallocatedShards);
         }
