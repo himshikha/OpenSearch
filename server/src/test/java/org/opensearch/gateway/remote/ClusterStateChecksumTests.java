@@ -152,6 +152,16 @@ public class ClusterStateChecksumTests extends OpenSearchTestCase {
             .numberOfShards(1)
             .numberOfReplicas(0)
             .build();
+        final Index index2 = new Index("test-index2", "index-uuid2");
+        final Settings idxSettings2 = Settings.builder()
+            .put(IndexMetadata.SETTING_VERSION_CREATED, Version.CURRENT)
+            .put(IndexMetadata.SETTING_INDEX_UUID, index2.getUUID())
+            .put(IndexMetadata.INDEX_READ_ONLY_SETTING.getKey(), true)
+            .build();
+        final IndexMetadata indexMetadata2 = new IndexMetadata.Builder(index2.getName()).settings(idxSettings2)
+            .numberOfShards(1)
+            .numberOfReplicas(2)
+            .build();
         final CoordinationMetadata coordinationMetadata = CoordinationMetadata.builder().term(1L).build();
         final Settings settings = Settings.builder().put("mock-settings", true).build();
         final TemplatesMetadata templatesMetadata = TemplatesMetadata.builder()
@@ -183,7 +193,7 @@ public class ClusterStateChecksumTests extends OpenSearchTestCase {
             .nodes(DiscoveryNodes.builder().clusterManagerNodeId("test-node").build())
             .blocks(ClusterBlocks.builder().addBlocks(indexMetadata).build())
             .customs(Map.of(clusterStateCustom1.getWriteableName(), clusterStateCustom1))
-            .routingTable(RoutingTable.builder().addAsNew(indexMetadata).version(1L).build())
+            .routingTable(RoutingTable.builder().addAsNew(indexMetadata).addAsNew(indexMetadata2).version(1L).build())
             .build();
     }
 }

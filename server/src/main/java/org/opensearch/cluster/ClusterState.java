@@ -839,6 +839,22 @@ public class ClusterState implements ToXContentFragment, Diffable<ClusterState> 
             minimumClusterManagerNodesOnPublishingClusterManager = after.minimumClusterManagerNodesOnPublishingClusterManager;
         }
 
+        @Override
+        public String toString() {
+            return "ClusterStateDiff{" +
+                "toVersion=" + toVersion +
+                ", fromUuid='" + fromUuid + '\'' +
+                ", toUuid='" + toUuid + '\'' +
+                ", clusterName=" + clusterName +
+                ", routingTable=" + routingTable +
+                ", nodes=" + nodes +
+                ", metadata=" + metadata +
+                ", blocks=" + blocks +
+                ", customs=" + customs +
+                ", minimumClusterManagerNodesOnPublishingClusterManager=" + minimumClusterManagerNodesOnPublishingClusterManager +
+                '}';
+        }
+
         ClusterStateDiff(StreamInput in, DiscoveryNode localNode) throws IOException {
             clusterName = new ClusterName(in);
             fromUuid = in.readString();
